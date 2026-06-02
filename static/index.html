@@ -170,13 +170,19 @@
     </template>
     <template x-for="(items, day) in historyGroups">
       <div class="mx-4 mt-3">
-        <div class="text-xs font-bold text-slate-400 dark:text-gray-500 px-1 py-2" x-text="day"></div>
+        <div class="text-xs font-bold text-slate-400 dark:text-gray-500 px-1 py-2 flex items-center gap-2">
+          <span x-text="day"></span>
+          <span class="font-normal text-[11px] text-slate-300 dark:text-gray-600" x-text="'· ' + dayTotal(items)"></span>
+        </div>
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
           <template x-for="(item, idx) in items">
             <div class="flex items-start gap-3 px-4 py-3" :class="idx < items.length - 1 ? 'border-b border-slate-50 dark:border-gray-700/50' : ''">
-              <div class="text-xs text-slate-400 dark:text-gray-500 whitespace-nowrap min-w-[80px] pt-0.5">
+              <div class="text-xs text-slate-400 dark:text-gray-500 whitespace-nowrap min-w-[90px] pt-0.5">
                 <div x-text="fmtTime(item.start_time)"></div>
-                <div x-text="item.end_time ? '→ ' + fmtTime(item.end_time) : '进行中'"></div>
+                <div class="flex items-center gap-1">
+                  <span x-text="item.end_time ? '→ ' + fmtTime(item.end_time) : '进行中'"></span>
+                  <span class="text-[10px] text-slate-300 dark:text-gray-600" x-show="item.end_time" x-text="fmtDuration(item.start_time, item.end_time)"></span>
+                </div>
               </div>
               <div class="flex-1 min-w-0">
                 <div class="text-sm" x-text="item.description || '(无描述)'"></div>
@@ -594,6 +600,24 @@ function app() {
     },
 
     fmtTime(iso) { return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }); },
+
+    fmtDuration(startIso, endIso) {
+      if (!endIso) return "进行中";
+      const min = Math.round((new Date(endIso) - new Date(startIso)) / 60000);
+      if (min < 60) return min + "m";
+      const h = Math.floor(min / 60), m = min % 60;
+      return m > 0 ? h + "h" + m + "m" : h + "h";
+    },
+
+    dayTotal(items) {
+      let min = 0;
+      for (const it of items) {
+        if (it.end_time) min += (new Date(it.end_time) - new Date(it.start_time)) / 60000;
+      }
+      if (min < 60) return Math.round(min) + "m";
+      const h = Math.floor(min / 60), m = Math.round(min % 60);
+      return m > 0 ? h + "h" + m + "m" : h + "h";
+    },
 
     editItem(item) {
       const toLocal = (iso) => {
