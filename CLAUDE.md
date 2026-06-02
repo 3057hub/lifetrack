@@ -53,7 +53,12 @@ set DEEPSEEK_API_KEY=你的密钥
 python -m uvicorn main:app --host 0.0.0.0 --port 8002
 ```
 
+## 已安装的 Skills
+
+- `ui-ux-pro-max` — UI/UX 美化 skill，位于 `.claude/skills/ui-ux-pro-max/`，支持 HTML-Tailwind 技术栈
+
 ## 当前状态
 
 阶段 1 和阶段 2 均已完成，所有功能可用。项目已推送到 GitHub。
+待办：使用 ui-ux-pro-max 美化前端 UI。
 代理端口: 65532（本地）
