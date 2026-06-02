@@ -271,7 +271,10 @@
               <span class="text-[10px] px-1.5 py-0.5 rounded font-medium"
                 :class="fmtPeriod(r) === '日' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'"
                 x-text="fmtPeriod(r) === '日' ? '日' : '周'"></span>
-              <span x-show="r.user_feedback" class="text-[10px] text-slate-400 dark:text-gray-500 ml-auto" x-text="feedbackLabel(r.user_feedback)"></span>
+              <span x-show="r.user_feedback" class="text-[10px] text-slate-400 dark:text-gray-500" x-text="feedbackLabel(r.user_feedback)"></span>
+              <button class="ml-auto p-1 text-slate-300 dark:text-gray-600 hover:text-red-500 transition-colors" @click.stop="deleteReport(r.id)" aria-label="删除">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" stroke-width="2"/><line x1="6" y1="6" x2="18" y2="18" stroke-width="2"/></svg>
+              </button>
             </div>
           </template>
         </div>
@@ -697,6 +700,19 @@ function app() {
     fmtPeriod(r) {
       const diff = new Date(r.period_end) - new Date(r.period_start);
       return diff < 36 * 3600000 ? '日' : '周';
+    },
+
+    async deleteReport(id) {
+      if (!confirm("确定删除这份报告？")) return;
+      try {
+        await this.api("/api/reports/" + id, { method: "DELETE" });
+        this.reportList = this.reportList.filter(r => r.id !== id);
+        if (this.latestReport && this.latestReport.id === id) {
+          this.latestReport = null;
+          this.reportSections = [];
+        }
+        this.showToast("已删除");
+      } catch (e) { this.showToast("删除失败", "error"); }
     },
 
     async generateReport(period) {

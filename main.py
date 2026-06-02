@@ -520,6 +520,17 @@ def update_report_feedback(report_id: int, body: ReportFeedback, db: Session = D
     return {"ok": True}
 
 
+@app.delete("/api/reports/{report_id}", dependencies=[Depends(verify_password)])
+def delete_report(report_id: int, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    db.delete(report)
+    db.commit()
+    logger.info(f"报告已删除 id={report_id}")
+    return {"ok": True}
+
+
 # ── static files (dev) ────────────────────────────────────────
 
 if os.path.isdir("static"):
