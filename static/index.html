@@ -335,6 +335,29 @@
         </div>
       </template>
     </div>
+
+    <!-- Admin panel -->
+    <template x-if="isAdmin">
+      <div class="mx-4 mt-4 p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
+        <h3 class="font-semibold text-sm text-primary dark:text-primary-light mb-3 flex items-center gap-1">👥 用户管理</h3>
+        <!-- user list -->
+        <template x-if="userList.length > 0">
+          <div class="mb-4 divide-y divide-slate-50 dark:divide-gray-700/50">
+            <div class="flex items-center gap-2 py-2 text-sm" x-for="u in userList">
+              <span x-text="u.username" class="flex-1"></span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" x-show="u.is_admin">admin</span>
+              <span class="text-[10px] text-slate-400 dark:text-gray-500" x-text="new Date(u.created_at).toLocaleDateString('zh-CN')"></span>
+            </div>
+          </div>
+        </template>
+        <!-- create user form -->
+        <div class="flex gap-2">
+          <input type="text" x-model="newUserName" @keydown.enter="addUser()" placeholder="用户名" class="flex-1 p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none text-sm transition-colors">
+          <input type="password" x-model="newUserPwd" @keydown.enter="addUser()" placeholder="密码" class="w-28 p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none text-sm transition-colors">
+          <button class="px-4 py-2.5 rounded-lg font-semibold text-sm text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all" @click="addUser()">添加</button>
+        </div>
+      </div>
+    </template>
   </div>
 
   <!-- Bottom Nav -->
@@ -426,6 +449,7 @@ function app() {
     loginUser: "",
     pwdInput: "",
     token: "",
+    isAdmin: false,
     authError: "",
     darkMode: false,
     toasts: [],
@@ -452,6 +476,10 @@ function app() {
     // goals
     goals: [],
     newGoal: "",
+    // admin
+    userList: [],
+    newUserName: "",
+    newUserPwd: "",
 
     get activeGoals() { return this.goals.filter(g => g.is_active); },
     get inactiveGoals() { return this.goals.filter(g => !g.is_active); },
@@ -461,7 +489,7 @@ function app() {
       this.view = v;
       if (v === 'history') this.loadHistory();
       else if (v === 'report') { this.loadReport(); this.loadReportList(); }
-      else if (v === 'goals') this.loadGoals();
+      else if (v === 'goals') { this.loadGoals(); if (this.isAdmin) this.loadUsers(); }
     },
 
     // ── dark mode ──
@@ -487,9 +515,10 @@ function app() {
       const saved = localStorage.getItem("lifetrack_token");
       if (saved) {
         const parts = saved.split(":");
-        if (parts.length === 2) {
+        if (parts.length >= 2) {
           this.loginUser = parts[0];
           this.token = parts[1];
+          this.isAdmin = parts.length >= 3 && parts[2] === "1";
           this.authed = true;
           await this.checkActiveTimer();
         }
@@ -525,7 +554,8 @@ function app() {
         const data = await res.json();
         if (data.token) {
           this.authed = true; this.authError = ""; this.token = data.token;
-          localStorage.setItem("lifetrack_token", this.loginUser + ":" + this.token);
+          this.isAdmin = data.is_admin || false;
+          localStorage.setItem("lifetrack_token", this.loginUser + ":" + this.token + ":" + (this.isAdmin ? "1" : "0"));
           await this.checkActiveTimer();
         } else { this.authError = data.detail || "登录失败"; }
       } catch { this.authError = "连接服务器失败"; }
@@ -682,6 +712,30 @@ function app() {
     async activateGoal(id) {
       try { await this.api("/api/goals/" + id + "/activate", { method: "PUT" }); await this.loadGoals(); this.showToast("已启用"); }
       catch (e) { this.showToast("操作失败"); }
+    },
+
+    // ── admin ──
+    async loadUsers() {
+      try {
+        const res = await this.api("/api/users");
+        if (res.ok) this.userList = await res.json();
+      } catch (e) { console.error("loadUsers:", e); }
+    },
+    async addUser() {
+      if (!this.newUserName || !this.newUserPwd) return;
+      try {
+        const res = await this.api("/api/auth/register", {
+          method: "POST", body: JSON.stringify({ username: this.newUserName, password: this.newUserPwd }),
+        });
+        if (res.ok) {
+          this.showToast("用户已创建", "success");
+          this.newUserName = ""; this.newUserPwd = "";
+          this.loadUsers();
+        } else {
+          const err = await res.json();
+          this.showToast(err.detail || "创建失败", "error");
+        }
+      } catch (e) { this.showToast("创建失败", "error"); }
     },
 
     // ── reports ──

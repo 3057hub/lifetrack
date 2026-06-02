@@ -259,6 +259,14 @@ def auth_register(body: UserCreate, db: Session = Depends(get_db), user: Optiona
     return {"ok": True, "id": new_user.id, "username": new_user.username}
 
 
+@app.get("/api/users")
+def list_users_api(db: Session = Depends(get_db), user: Optional[User] = Depends(verify_token)):
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="仅管理员可查看")
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    return [{"id": u.id, "username": u.username, "is_admin": u.is_admin, "created_at": u.created_at.isoformat() + "Z"} for u in users]
+
+
 @app.post("/api/auth/verify")
 def auth_verify(body: PasswordCheck):
     # Legacy endpoint — kept for backward compatibility
