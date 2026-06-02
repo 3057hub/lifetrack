@@ -1,6 +1,8 @@
 import os
 import json
 import re
+import secrets
+import hashlib
 import logging
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional
@@ -26,9 +28,28 @@ engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread"
 Base = declarative_base()
 
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, nullable=False, unique=True)
+    password_hash = Column(String, nullable=False)
+    salt = Column(String, nullable=False)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+
+class Token(Base):
+    __tablename__ = "tokens"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+
 class Activity(Base):
     __tablename__ = "activities"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=True)
     description = Column(Text, default="")
@@ -39,6 +60,7 @@ class Activity(Base):
 class Report(Base):
     __tablename__ = "reports"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
     period_start = Column(DateTime, nullable=False)
     period_end = Column(DateTime, nullable=False)
     summary_text = Column(Text, default="")
@@ -50,12 +72,30 @@ class Report(Base):
 class Goal(Base):
     __tablename__ = "goals"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
     content = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 Base.metadata.create_all(bind=engine)
+
+
+# ── auth helpers ──────────────────────────────────────────────
+
+
+def hash_password(password: str, salt: str = None) -> tuple[str, str]:
+    if salt is None:
+        salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000)
+    return h.hex(), salt
+
+
+def get_current_user(db: Session, token_str: str) -> Optional[User]:
+    t = db.query(Token).filter(Token.token == token_str).first()
+    if not t:
+        return None
+    return db.query(User).filter(User.id == t.user_id).first()
 
 
 def get_db():
@@ -111,12 +151,25 @@ DEEPSEEK_MODEL = "deepseek-chat"
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 
 
-def verify_password(x_app_password: Optional[str] = Header(None)):
-    if not APP_PASSWORD:
-        return True
-    if x_app_password == APP_PASSWORD:
-        return True
-    raise HTTPException(status_code=401, detail="密码错误")
+def verify_token(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    """Token-based auth. Falls back to old APP_PASSWORD for backward compat."""
+    if not authorization or not authorization.startswith("Bearer "):
+        # fallback: old password header
+        pass
+    else:
+        token_str = authorization[7:]
+        user = get_current_user(db, token_str)
+        if user:
+            return user
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+
+    # Legacy: check X-App-Password header for backward compat
+    return None
+
+
+def verify_legacy_password(x_app_password: Optional[str] = Header(None)):
+    if APP_PASSWORD and x_app_password != APP_PASSWORD:
+        raise HTTPException(status_code=401, detail="密码错误")
 
 
 # ── helpers ───────────────────────────────────────────────────
@@ -159,9 +212,56 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── auth routes ───────────────────────────────────────────────
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class UserCreate(BaseModel):
+    username: str = Field(..., max_length=50)
+    password: str = Field(..., max_length=100)
+
+
+@app.post("/api/auth/login")
+def auth_login(body: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == body.username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    h, _ = hash_password(body.password, user.salt)
+    if h != user.password_hash:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+    # create token
+    token_str = secrets.token_hex(32)
+    token = Token(token=token_str, user_id=user.id)
+    db.add(token)
+    db.commit()
+    return {"token": token_str, "username": user.username, "is_admin": user.is_admin}
+
+
+@app.post("/api/auth/register")
+def auth_register(body: UserCreate, db: Session = Depends(get_db), user: Optional[User] = Depends(verify_token)):
+    # only admin can create users (or first user with legacy password)
+    if user and not user.is_admin:
+        raise HTTPException(status_code=403, detail="仅管理员可创建用户")
+    if not user:
+        verify_legacy_password()
+
+    existing = db.query(User).filter(User.username == body.username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+
+    pw_hash, salt = hash_password(body.password)
+    new_user = User(username=body.username, password_hash=pw_hash, salt=salt, is_admin=False)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    logger.info(f"用户已创建: {body.username} id={new_user.id}")
+    return {"ok": True, "id": new_user.id, "username": new_user.username}
+
 
 @app.post("/api/auth/verify")
 def auth_verify(body: PasswordCheck):
+    # Legacy endpoint — kept for backward compatibility
     if not APP_PASSWORD:
         return {"valid": True, "message": "未设置密码，允许访问"}
     if body.password == APP_PASSWORD:
@@ -169,12 +269,21 @@ def auth_verify(body: PasswordCheck):
     return JSONResponse(status_code=401, content={"valid": False, "detail": "密码错误"})
 
 
+def get_user_id(user: Optional[User] = Depends(verify_token), x_app_password: Optional[str] = Header(None)) -> int:
+    """Returns user_id from token, or falls back to legacy password for existing data (user_id=1)."""
+    if user:
+        return user.id
+    # Legacy: use APP_PASSWORD, assign to user_id=1 (default admin)
+    verify_legacy_password(x_app_password)
+    return 1
+
+
 # ── activity routes ───────────────────────────────────────────
 
 
-@app.post("/api/activities", dependencies=[Depends(verify_password)])
-def create_activity(body: ActivityCreate, db: Session = Depends(get_db)):
-    logger.info(f"创建活动: start={body.start_time}, desc={body.description[:30] if body.description else '(空)'}")
+@app.post("/api/activities")
+def create_activity(body: ActivityCreate, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    logger.info(f"创建活动: user={user_id} start={body.start_time}")
     try:
         start = parse_iso(body.start_time)
     except Exception:
@@ -187,7 +296,7 @@ def create_activity(body: ActivityCreate, db: Session = Depends(get_db)):
         except Exception:
             raise HTTPException(status_code=400, detail="end_time 格式错误，需要 ISO 8601")
 
-    activity = Activity(start_time=start, end_time=end, description=body.description, tags=body.tags)
+    activity = Activity(user_id=user_id, start_time=start, end_time=end, description=body.description, tags=body.tags)
     db.add(activity)
     db.commit()
     db.refresh(activity)
@@ -195,10 +304,10 @@ def create_activity(body: ActivityCreate, db: Session = Depends(get_db)):
     return activity_to_dict(activity)
 
 
-@app.get("/api/activities", dependencies=[Depends(verify_password)])
-def list_activities(date_param: Optional[str] = None, db: Session = Depends(get_db)):
-    logger.info(f"查询活动 date={date_param}")
-    query = db.query(Activity).order_by(Activity.start_time.desc())
+@app.get("/api/activities")
+def list_activities(date_param: Optional[str] = None, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    logger.info(f"查询活动 user={user_id} date={date_param}")
+    query = db.query(Activity).filter(Activity.user_id == user_id).order_by(Activity.start_time.desc())
 
     if date_param:
         try:
@@ -214,19 +323,18 @@ def list_activities(date_param: Optional[str] = None, db: Session = Depends(get_
     return [activity_to_dict(a) for a in activities]
 
 
-@app.get("/api/activities/active", dependencies=[Depends(verify_password)])
-def get_active_activity(db: Session = Depends(get_db)):
-    logger.info("查询进行中的活动")
-    active = db.query(Activity).filter(Activity.end_time == None).order_by(Activity.start_time.desc()).first()
+@app.get("/api/activities/active")
+def get_active_activity(db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    active = db.query(Activity).filter(Activity.user_id == user_id, Activity.end_time == None).order_by(Activity.start_time.desc()).first()
     if not active:
         return {"active": None}
     return {"active": activity_to_dict(active)}
 
 
-@app.put("/api/activities/{activity_id}", dependencies=[Depends(verify_password)])
-def update_activity(activity_id: int, body: ActivityUpdate, db: Session = Depends(get_db)):
-    logger.info(f"更新活动 id={activity_id}")
-    activity = db.query(Activity).filter(Activity.id == activity_id).first()
+@app.put("/api/activities/{activity_id}")
+def update_activity(activity_id: int, body: ActivityUpdate, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    logger.info(f"更新活动 id={activity_id} user={user_id}")
+    activity = db.query(Activity).filter(Activity.id == activity_id, Activity.user_id == user_id).first()
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
 
@@ -251,10 +359,10 @@ def update_activity(activity_id: int, body: ActivityUpdate, db: Session = Depend
     return activity_to_dict(activity)
 
 
-@app.delete("/api/activities/{activity_id}", dependencies=[Depends(verify_password)])
-def delete_activity(activity_id: int, db: Session = Depends(get_db)):
-    logger.info(f"删除活动 id={activity_id}")
-    activity = db.query(Activity).filter(Activity.id == activity_id).first()
+@app.delete("/api/activities/{activity_id}")
+def delete_activity(activity_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    logger.info(f"删除活动 id={activity_id} user={user_id}")
+    activity = db.query(Activity).filter(Activity.id == activity_id, Activity.user_id == user_id).first()
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
     db.delete(activity)
@@ -266,16 +374,16 @@ def delete_activity(activity_id: int, db: Session = Depends(get_db)):
 # ── goal routes ───────────────────────────────────────────────
 
 
-@app.get("/api/goals", dependencies=[Depends(verify_password)])
-def list_goals(db: Session = Depends(get_db)):
-    goals = db.query(Goal).order_by(Goal.is_active.desc(), Goal.created_at.desc()).all()
+@app.get("/api/goals")
+def list_goals(db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    goals = db.query(Goal).filter(Goal.user_id == user_id).order_by(Goal.is_active.desc(), Goal.created_at.desc()).all()
     return [{"id": g.id, "content": g.content, "is_active": g.is_active, "created_at": g.created_at.isoformat() + "Z"} for g in goals]
 
 
-@app.post("/api/goals", dependencies=[Depends(verify_password)])
-def create_goal(body: GoalCreate, db: Session = Depends(get_db)):
+@app.post("/api/goals")
+def create_goal(body: GoalCreate, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
     logger.info(f"创建目标: {body.content[:50]}")
-    goal = Goal(content=body.content.strip())
+    goal = Goal(user_id=user_id, content=body.content.strip())
     if not goal.content:
         raise HTTPException(status_code=400, detail="目标内容不能为空")
     db.add(goal)
@@ -284,9 +392,9 @@ def create_goal(body: GoalCreate, db: Session = Depends(get_db)):
     return {"id": goal.id, "content": goal.content, "is_active": goal.is_active}
 
 
-@app.put("/api/goals/{goal_id}/deactivate", dependencies=[Depends(verify_password)])
-def deactivate_goal(goal_id: int, db: Session = Depends(get_db)):
-    goal = db.query(Goal).filter(Goal.id == goal_id).first()
+@app.put("/api/goals/{goal_id}/deactivate")
+def deactivate_goal(goal_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == user_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="目标不存在")
     goal.is_active = False
@@ -294,9 +402,9 @@ def deactivate_goal(goal_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-@app.put("/api/goals/{goal_id}/activate", dependencies=[Depends(verify_password)])
-def activate_goal(goal_id: int, db: Session = Depends(get_db)):
-    goal = db.query(Goal).filter(Goal.id == goal_id).first()
+@app.put("/api/goals/{goal_id}/activate")
+def activate_goal(goal_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == user_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="目标不存在")
     goal.is_active = True
@@ -436,19 +544,20 @@ async def call_deepseek(prompt: str) -> dict:
 # ── report routes ─────────────────────────────────────────────
 
 
-@app.post("/api/reports/generate", dependencies=[Depends(verify_password)])
-async def generate_report(body: ReportGenerate, db: Session = Depends(get_db)):
-    logger.info(f"生成报告 period={body.period}")
+@app.post("/api/reports/generate")
+async def generate_report(body: ReportGenerate, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    logger.info(f"生成报告 period={body.period} user={user_id}")
     period_start, period_end = get_period_range(body.period)
 
     activities = db.query(Activity).filter(
+        Activity.user_id == user_id,
         Activity.start_time >= period_start,
         Activity.start_time <= period_end,
     ).order_by(Activity.start_time.asc()).all()
 
-    active_goals = db.query(Goal).filter(Goal.is_active == True).all()
+    active_goals = db.query(Goal).filter(Goal.user_id == user_id, Goal.is_active == True).all()
 
-    last_report = db.query(Report).order_by(Report.created_at.desc()).first()
+    last_report = db.query(Report).filter(Report.user_id == user_id).order_by(Report.created_at.desc()).first()
     memory = last_report.memory_abstract if last_report else ""
     feedback = last_report.user_feedback if last_report else ""
 
@@ -456,6 +565,7 @@ async def generate_report(body: ReportGenerate, db: Session = Depends(get_db)):
     result = await call_deepseek(prompt)
 
     report = Report(
+        user_id=user_id,
         period_start=period_start,
         period_end=period_end,
         summary_text=result["summary_markdown"],
@@ -477,9 +587,9 @@ async def generate_report(body: ReportGenerate, db: Session = Depends(get_db)):
     }
 
 
-@app.get("/api/reports/latest", dependencies=[Depends(verify_password)])
-def get_latest_report(db: Session = Depends(get_db)):
-    report = db.query(Report).order_by(Report.created_at.desc()).first()
+@app.get("/api/reports/latest")
+def get_latest_report(db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    report = db.query(Report).filter(Report.user_id == user_id).order_by(Report.created_at.desc()).first()
     if not report:
         return {"report": None}
     return {
@@ -493,9 +603,9 @@ def get_latest_report(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/api/reports", dependencies=[Depends(verify_password)])
-def list_reports(limit: int = Query(default=5, ge=1, le=50), db: Session = Depends(get_db)):
-    reports = db.query(Report).order_by(Report.created_at.desc()).limit(limit).all()
+@app.get("/api/reports")
+def list_reports(limit: int = Query(default=5, ge=1, le=50), db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    reports = db.query(Report).filter(Report.user_id == user_id).order_by(Report.created_at.desc()).limit(limit).all()
     return [{
         "id": r.id,
         "period_start": r.period_start.isoformat() + "Z",
@@ -507,10 +617,10 @@ def list_reports(limit: int = Query(default=5, ge=1, le=50), db: Session = Depen
     } for r in reports]
 
 
-@app.put("/api/reports/{report_id}/feedback", dependencies=[Depends(verify_password)])
-def update_report_feedback(report_id: int, body: ReportFeedback, db: Session = Depends(get_db)):
+@app.put("/api/reports/{report_id}/feedback")
+def update_report_feedback(report_id: int, body: ReportFeedback, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
     logger.info(f"更新报告反馈 id={report_id} feedback={body.feedback}")
-    report = db.query(Report).filter(Report.id == report_id).first()
+    report = db.query(Report).filter(Report.id == report_id, Report.user_id == user_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="报告不存在")
     if body.feedback not in ("helpful", "executed", "ignored"):
@@ -520,9 +630,9 @@ def update_report_feedback(report_id: int, body: ReportFeedback, db: Session = D
     return {"ok": True}
 
 
-@app.delete("/api/reports/{report_id}", dependencies=[Depends(verify_password)])
-def delete_report(report_id: int, db: Session = Depends(get_db)):
-    report = db.query(Report).filter(Report.id == report_id).first()
+@app.delete("/api/reports/{report_id}")
+def delete_report(report_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    report = db.query(Report).filter(Report.id == report_id, Report.user_id == user_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="报告不存在")
     db.delete(report)
