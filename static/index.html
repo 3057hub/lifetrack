@@ -210,16 +210,16 @@
     x-transition:leave-start="opacity-100 translate-x-0"
     x-transition:leave-end="opacity-0 translate-x-4">
     <div class="mx-4 mt-4 flex gap-2">
-      <button class="flex-1 py-3 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all disabled:opacity-50 flex items-center justify-center gap-2" @click="generateReport('day')" :disabled="generating">
-        <span class="spinner" x-show="generating"></span>今日总结
+      <button class="flex-1 py-3 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all disabled:opacity-50 flex items-center justify-center gap-2" @click="generateReport('day')" :disabled="generating !== ''">
+        <span class="spinner" x-show="generating === 'day'"></span>今日总结
       </button>
-      <button class="flex-1 py-3 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all disabled:opacity-50 flex items-center justify-center gap-2" @click="generateReport('week')" :disabled="generating">
-        <span class="spinner" x-show="generating"></span>本周分析
+      <button class="flex-1 py-3 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all disabled:opacity-50 flex items-center justify-center gap-2" @click="generateReport('week')" :disabled="generating !== ''">
+        <span class="spinner" x-show="generating === 'week'"></span>本周分析
       </button>
     </div>
 
     <!-- Loading skeleton -->
-    <template x-if="generating">
+    <template x-if="generating !== ''">
       <div class="mx-4 mt-3 space-y-3 animate-pulse">
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-4"><div class="h-4 bg-slate-200 dark:bg-gray-700 rounded w-24 mb-3"></div><div class="h-3 bg-slate-200 dark:bg-gray-700 rounded w-full mb-2"></div><div class="h-3 bg-slate-200 dark:bg-gray-700 rounded w-3/4"></div></div>
       </div>
@@ -408,7 +408,7 @@ function app() {
     // report
     latestReport: null,
     reportSections: [],
-    generating: false,
+    generating: "",
     feedbackSent: null,
     // goals
     goals: [],
@@ -645,14 +645,16 @@ function app() {
       try {
         const res = await this.api("/api/reports/latest");
         const data = await res.json();
-        this.latestReport = data.report || null;
-        this.reportSections = this.latestReport ? this.parseSections(this.latestReport.summary_text) : [];
-        this.feedbackSent = this.latestReport ? this.latestReport.user_feedback : null;
+        if (data.report) {
+          this.latestReport = data.report;
+          this.reportSections = this.parseSections(data.report.summary_text);
+          this.feedbackSent = data.report.user_feedback || null;
+        }
       } catch (e) { console.error("loadReport:", e); }
     },
 
     async generateReport(period) {
-      this.generating = true;
+      this.generating = period;
       try {
         const res = await this.api("/api/reports/generate", {
           method: "POST", body: JSON.stringify({ period }),
@@ -666,7 +668,7 @@ function app() {
         this.feedbackSent = null;
         this.showToast("报告已生成");
       } catch (e) { this.showToast(e.message || "生成失败，请检查 API Key 配置", "error"); }
-      finally { this.generating = false; }
+      finally { this.generating = ""; }
     },
 
     async sendFeedback(feedback) {

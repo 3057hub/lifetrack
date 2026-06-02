@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("lifetrack")
 
+CHINA_TZ = timezone(timedelta(hours=8))
+
 # ── database ──────────────────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lifetrack.db")
 engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
@@ -306,12 +308,12 @@ def activate_goal(goal_id: int, db: Session = Depends(get_db)):
 
 
 def get_period_range(period: str) -> tuple[datetime, datetime]:
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(CHINA_TZ)
     if period == "week":
         monday = now - timedelta(days=now.weekday())
-        return datetime(monday.year, monday.month, monday.day), now
+        return datetime(monday.year, monday.month, monday.day, tzinfo=CHINA_TZ), now
     else:
-        return datetime(now.year, now.month, now.day), now
+        return datetime(now.year, now.month, now.day, tzinfo=CHINA_TZ), now
 
 
 def build_prompt(activities: list, goals: list, memory: str, feedback: str, period: str) -> str:
@@ -319,8 +321,13 @@ def build_prompt(activities: list, goals: list, memory: str, feedback: str, peri
 
     lines = []
     for a in activities:
-        start = a.start_time.strftime("%H:%M")
-        end = a.end_time.strftime("%H:%M") if a.end_time else "进行中"
+        start_local = a.start_time.replace(tzinfo=timezone.utc).astimezone(CHINA_TZ)
+        start = start_local.strftime("%H:%M")
+        if a.end_time:
+            end_local = a.end_time.replace(tzinfo=timezone.utc).astimezone(CHINA_TZ)
+            end = end_local.strftime("%H:%M")
+        else:
+            end = "进行中"
         duration = ""
         if a.end_time:
             mins = int((a.end_time - a.start_time).total_seconds() / 60)
