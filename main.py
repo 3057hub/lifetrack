@@ -2,7 +2,7 @@ import os
 import json
 import re
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean
 from sqlalchemy.orm import Session, declarative_base
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ── logging ──────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -31,7 +31,7 @@ class Activity(Base):
     end_time = Column(DateTime, nullable=True)
     description = Column(Text, default="")
     tags = Column(String, default="")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class Report(Base):
@@ -42,7 +42,7 @@ class Report(Base):
     summary_text = Column(Text, default="")
     memory_abstract = Column(Text, default="")
     user_feedback = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class Goal(Base):
@@ -50,7 +50,7 @@ class Goal(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     content = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 Base.metadata.create_all(bind=engine)
@@ -70,15 +70,15 @@ def get_db():
 class ActivityCreate(BaseModel):
     start_time: str  # ISO 8601
     end_time: Optional[str] = None
-    description: str = ""
-    tags: str = ""
+    description: str = Field(default="", max_length=500)
+    tags: str = Field(default="", max_length=200)
 
 
 class ActivityUpdate(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
-    description: Optional[str] = None
-    tags: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=500)
+    tags: Optional[str] = Field(default=None, max_length=200)
 
 
 class PasswordCheck(BaseModel):
@@ -86,7 +86,7 @@ class PasswordCheck(BaseModel):
 
 
 class GoalCreate(BaseModel):
-    content: str
+    content: str = Field(..., max_length=500)
 
 
 class ReportGenerate(BaseModel):
@@ -128,11 +128,11 @@ def parse_iso(s: str) -> datetime:
 def activity_to_dict(a: Activity) -> dict:
     return {
         "id": a.id,
-        "start_time": a.start_time.isoformat(),
-        "end_time": a.end_time.isoformat() if a.end_time else None,
+        "start_time": a.start_time.isoformat() + "Z",
+        "end_time": (a.end_time.isoformat() + "Z") if a.end_time else None,
         "description": a.description,
         "tags": a.tags,
-        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "created_at": (a.created_at.isoformat() + "Z") if a.created_at else None,
     }
 
 
@@ -267,7 +267,7 @@ def delete_activity(activity_id: int, db: Session = Depends(get_db)):
 @app.get("/api/goals", dependencies=[Depends(verify_password)])
 def list_goals(db: Session = Depends(get_db)):
     goals = db.query(Goal).order_by(Goal.is_active.desc(), Goal.created_at.desc()).all()
-    return [{"id": g.id, "content": g.content, "is_active": g.is_active, "created_at": g.created_at.isoformat()} for g in goals]
+    return [{"id": g.id, "content": g.content, "is_active": g.is_active, "created_at": g.created_at.isoformat() + "Z"} for g in goals]
 
 
 @app.post("/api/goals", dependencies=[Depends(verify_password)])
@@ -306,7 +306,7 @@ def activate_goal(goal_id: int, db: Session = Depends(get_db)):
 
 
 def get_period_range(period: str) -> tuple[datetime, datetime]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     if period == "week":
         monday = now - timedelta(days=now.weekday())
         return datetime(monday.year, monday.month, monday.day), now
@@ -461,12 +461,12 @@ async def generate_report(body: ReportGenerate, db: Session = Depends(get_db)):
 
     return {
         "id": report.id,
-        "period_start": report.period_start.isoformat(),
-        "period_end": report.period_end.isoformat(),
+        "period_start": report.period_start.isoformat() + "Z",
+        "period_end": report.period_end.isoformat() + "Z",
         "summary_text": report.summary_text,
         "memory_abstract": report.memory_abstract,
         "user_feedback": report.user_feedback,
-        "created_at": report.created_at.isoformat(),
+        "created_at": report.created_at.isoformat() + "Z",
     }
 
 
@@ -477,12 +477,12 @@ def get_latest_report(db: Session = Depends(get_db)):
         return {"report": None}
     return {
         "id": report.id,
-        "period_start": report.period_start.isoformat(),
-        "period_end": report.period_end.isoformat(),
+        "period_start": report.period_start.isoformat() + "Z",
+        "period_end": report.period_end.isoformat() + "Z",
         "summary_text": report.summary_text,
         "memory_abstract": report.memory_abstract,
         "user_feedback": report.user_feedback,
-        "created_at": report.created_at.isoformat(),
+        "created_at": report.created_at.isoformat() + "Z",
     }
 
 
@@ -491,12 +491,12 @@ def list_reports(limit: int = Query(default=5, ge=1, le=50), db: Session = Depen
     reports = db.query(Report).order_by(Report.created_at.desc()).limit(limit).all()
     return [{
         "id": r.id,
-        "period_start": r.period_start.isoformat(),
-        "period_end": r.period_end.isoformat(),
+        "period_start": r.period_start.isoformat() + "Z",
+        "period_end": r.period_end.isoformat() + "Z",
         "summary_text": r.summary_text,
         "memory_abstract": r.memory_abstract,
         "user_feedback": r.user_feedback,
-        "created_at": r.created_at.isoformat(),
+        "created_at": r.created_at.isoformat() + "Z",
     } for r in reports]
 
 

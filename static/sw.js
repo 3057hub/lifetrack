@@ -1,4 +1,4 @@
-const CACHE = "lifetrack-v1";
+const CACHE = "lifetrack-v3";
 const ASSETS = ["/", "/index.html", "/manifest.json", "/icons/icon-192.svg", "/icons/icon-512.svg"];
 
 self.addEventListener("install", (e) => {

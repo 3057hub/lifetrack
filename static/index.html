@@ -1,345 +1,381 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#1e293b">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0D9488">
 <link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192.svg">
 <title>LifeTrack</title>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          primary: { DEFAULT: '#0D9488', light: '#14B8A6', dark: '#0F766E', pale: '#CCFBF1' },
+          accent: { DEFAULT: '#F97316', hover: '#EA580C' },
+        }
+      }
+    }
+  }
+</script>
 <style>
   [x-cloak] { display: none !important; }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #f1f5f9; --card: #fff; --text: #1e293b; --sub: #64748b;
-    --primary: #0ea5e9; --primary-dark: #0284c7; --danger: #ef4444;
-    --success: #22c55e; --warn: #f59e0b;
-    --radius: 12px; --safe-bottom: env(safe-area-inset-bottom, 0px);
-  }
+  :root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg); color: var(--text); line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
     -webkit-tap-highlight-color: transparent; user-select: none;
     padding-bottom: calc(64px + var(--safe-bottom));
   }
   input, textarea, select { font-size: 16px; }
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: 44px; min-height: 44px; padding: 8px 16px; border: none;
-    border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
-    transition: opacity .15s;
-  }
-  .btn:active { opacity: .7; }
-  .btn-primary { background: var(--primary); color: #fff; }
-  .btn-danger { background: var(--danger); color: #fff; }
-  .btn-success { background: var(--success); color: #fff; }
-  .btn-warn { background: var(--warn); color: #fff; }
-  .btn-ghost { background: transparent; color: var(--sub); }
-  .btn-sm { min-width: 36px; min-height: 36px; padding: 4px 12px; font-size: 13px; }
-  .card { background: var(--card); border-radius: var(--radius); padding: 16px; margin: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 
-  /* password gate */
-  .gate { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 24px; }
-  .gate h1 { font-size: 28px; margin-bottom: 8px; }
-  .gate p { color: var(--sub); margin-bottom: 24px; }
-  .gate input { width: 100%; max-width: 280px; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; text-align: center; }
+  /* Timer */
+  .timer-display { font-size: 56px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+  .timer-ring { animation: timer-pulse 2s ease-in-out infinite; }
+  @keyframes timer-pulse { 0%, 100% { opacity: 0.15; transform: scale(1); } 50% { opacity: 0.3; transform: scale(1.05); } }
 
-  /* timer */
-  .timer-display { font-size: 56px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; margin: 16px 0; }
-  .timer-active { color: var(--primary); }
-  .timer-idle { color: var(--sub); }
-  .timer-btn {
-    width: 100%; padding: 20px; border: none; border-radius: var(--radius);
-    font-size: 20px; font-weight: 700; color: #fff; cursor: pointer; transition: opacity .15s;
-  }
-  .timer-btn:active { opacity: .7; }
-  .timer-btn-start { background: var(--primary); }
-  .timer-btn-stop { background: var(--danger); }
+  /* Toast container */
+  .toast-container { position: fixed; top: 16px; right: 16px; left: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+  .toast-item { pointer-events: auto; max-width: 320px; }
 
-  /* forms */
-  .form-group { margin-bottom: 12px; }
-  .form-group label { display: block; font-size: 13px; color: var(--sub); margin-bottom: 4px; }
-  .form-group input, .form-group textarea {
-    width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 8px;
-    background: #f8fafc; transition: border-color .15s;
-  }
-  .form-group input:focus, .form-group textarea:focus { border-color: var(--primary); outline: none; }
-
-  /* bottom nav */
-  .nav {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: var(--card); border-top: 1px solid #e2e8f0;
-    display: flex; justify-content: space-around; padding: 8px 0 calc(8px + var(--safe-bottom));
-    z-index: 100;
-  }
-  .nav-item {
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    min-width: 44px; min-height: 44px; justify-content: center;
-    background: none; border: none; color: var(--sub); font-size: 11px;
-    cursor: pointer; transition: color .15s;
-  }
-  .nav-item.active { color: var(--primary); }
-  .nav-item svg { width: 24px; height: 24px; }
-
-  /* history */
-  .date-group { margin-bottom: 8px; }
-  .date-header { font-size: 13px; font-weight: 700; color: var(--sub); padding: 8px 16px 4px; }
-  .timeline-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
-  .timeline-time { font-size: 13px; color: var(--sub); white-space: nowrap; min-width: 90px; }
-  .timeline-desc { flex: 1; font-size: 15px; }
-  .timeline-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
-  .tag { font-size: 11px; background: #e0f2fe; color: var(--primary-dark); padding: 2px 8px; border-radius: 20px; }
-  .timeline-actions { display: flex; gap: 4px; }
-
-  /* modal */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: flex-end; justify-content: center; }
-  .modal { background: var(--card); border-radius: var(--radius) var(--radius) 0 0; padding: 24px 16px 32px; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto; }
-  .modal h3 { margin-bottom: 16px; }
-
-  /* empty state */
-  .empty { text-align: center; padding: 48px 24px; color: var(--sub); }
-  .empty svg { width: 64px; height: 64px; margin-bottom: 16px; opacity: .3; }
-
-  /* toast */
-  .toast {
-    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-    background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 20px;
-    font-size: 14px; z-index: 300; opacity: 0; transition: opacity .3s;
-  }
-  .toast.show { opacity: 1; }
-
-  /* markdown */
-  .report-body h1, .report-body h2, .report-body h3 { margin: 0 0 8px; font-size: 1em; }
+  /* Markdown / report body */
+  .report-body h1, .report-body h2, .report-body h3 { margin: 0 0 4px; }
+  .report-body h1 { font-size: 1.1em; }
+  .report-body h2, .report-body h3 { font-size: 1em; }
   .report-body p { margin-bottom: 8px; line-height: 1.6; }
   .report-body ul, .report-body ol { padding-left: 20px; margin-bottom: 8px; }
   .report-body li { margin-bottom: 4px; line-height: 1.5; }
-  .report-body code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: .9em; }
-  .section-header {
-    font-size: 15px; font-weight: 700; color: var(--primary-dark);
-    padding-bottom: 8px; margin-bottom: 12px; border-bottom: 2px solid #e0f2fe;
-  }
+  .report-body code { background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: .9em; }
+  .dark .report-body code { background: #374151; }
 
-  /* goals */
-  .goal-item { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
-  .goal-content { flex: 1; font-size: 15px; }
-  .goal-inactive .goal-content { color: var(--sub); text-decoration: line-through; }
-
-  /* feedback */
-  .feedback-bar { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
-  .feedback-bar .btn.active { outline: 2px solid var(--primary); outline-offset: 2px; }
-
-  /* spinner */
-  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; }
+  /* Spinner */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Transition overrides for x-transition */
+  .modal-enter { transition: opacity .2s ease-out, transform .2s ease-out; }
+  .modal-leave { transition: opacity .15s ease-in, transform .15s ease-in; }
 </style>
 </head>
-<body x-data="app()" x-cloak>
+<body x-data="app()" x-cloak x-init="initDarkMode()" class="min-h-screen bg-slate-50 text-slate-800 dark:bg-gray-900 dark:text-gray-100 transition-colors">
 
-<!-- Toast -->
-<div class="toast" :class="{ show: toast.show }" x-text="toast.msg"></div>
+<!-- Toast Container -->
+<div class="toast-container">
+  <template x-for="t in toasts" :key="t.id">
+    <div class="toast-item rounded-lg px-4 py-3 text-sm text-white shadow-lg flex items-center gap-2"
+      :class="t.type === 'error' ? 'bg-red-500' : t.type === 'success' ? 'bg-emerald-500' : 'bg-slate-700 dark:bg-slate-600'"
+      x-show="t.show"
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="opacity-0 translate-x-8"
+      x-transition:enter-end="opacity-100 translate-x-0"
+      x-transition:leave="transition ease-in duration-200"
+      x-transition:leave-start="opacity-100 translate-x-0"
+      x-transition:leave-end="opacity-0 translate-x-8">
+      <svg x-show="t.type === 'error'" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><line x1="15" y1="9" x2="9" y2="15" stroke-width="2"/><line x1="9" y1="9" x2="15" y2="15" stroke-width="2"/></svg>
+      <svg x-show="t.type === 'success'" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><polyline points="9,12 11,14 15,10" stroke-width="2"/></svg>
+      <span x-text="t.msg"></span>
+    </div>
+  </template>
+</div>
 
 <!-- Password Gate -->
 <template x-if="!authed">
-<div class="gate">
-  <h1>LifeTrack</h1>
-  <p>请输入访问密码</p>
-  <input type="password" x-model="pwdInput" @keydown.enter="doAuth()" placeholder="输入密码">
-  <div style="margin-top:16px">
-    <button class="btn btn-primary" @click="doAuth()">进入</button>
+<div class="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-50 dark:bg-gray-900">
+  <div class="w-full max-w-sm text-center">
+    <div class="text-5xl mb-3">⏱️</div>
+    <h1 class="text-2xl font-bold mb-2 text-primary dark:text-primary-light">LifeTrack</h1>
+    <p class="text-slate-500 dark:text-gray-400 mb-6 text-sm">请输入访问密码</p>
+    <input type="password" x-model="pwdInput" @keydown.enter="doAuth()" placeholder="输入密码"
+      class="w-full px-4 py-3 border-2 border-slate-200 dark:border-gray-600 rounded-xl text-center bg-white dark:bg-gray-800 dark:text-white focus:border-primary focus:outline-none transition-colors">
+    <button class="w-full mt-4 py-3 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all" @click="doAuth()">进入</button>
+    <p class="mt-3 text-sm text-red-500" x-show="authError" x-text="authError"></p>
   </div>
-  <p style="margin-top:12px;font-size:13px;color:var(--danger)" x-show="authError" x-text="authError"></p>
 </div>
 </template>
 
 <!-- App -->
 <template x-if="authed">
-<div>
+<div class="max-w-lg mx-auto">
 
   <!-- Record View -->
-  <div x-show="view === 'record'">
-    <div class="card" style="text-align:center">
-      <div class="timer-display" :class="activeTimer ? 'timer-active' : 'timer-idle'" x-text="timerDisplay"></div>
+  <div x-show="view === 'record'"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 -translate-x-4"
+    x-transition:enter-end="opacity-100 translate-x-0"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-x-0"
+    x-transition:leave-end="opacity-0 translate-x-4">
+    <!-- Timer Card -->
+    <div class="mx-4 mt-4 p-6 bg-white dark:bg-gray-800 rounded-2xl shadow-sm text-center">
+      <div class="relative inline-flex items-center justify-center my-2">
+        <div x-show="activeTimer" class="absolute inset-0 rounded-full border-4 border-primary/20 timer-ring"></div>
+        <div class="timer-display relative z-10 px-4"
+          :class="activeTimer ? 'text-primary dark:text-primary-light' : 'text-slate-300 dark:text-gray-600'"
+          x-text="timerDisplay"></div>
+      </div>
       <template x-if="!activeTimer">
-        <button class="timer-btn timer-btn-start" @click="startTimer()">开 始</button>
+        <button class="w-full py-5 rounded-2xl font-bold text-xl text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all" @click="startTimer()">开 始</button>
       </template>
       <template x-if="activeTimer">
-        <button class="timer-btn timer-btn-stop" @click="stopTimer()">结 束</button>
+        <button class="w-full py-5 rounded-2xl font-bold text-xl text-white bg-[#F97316] hover:bg-[#EA580C] active:opacity-70 transition-all" @click="stopTimer()">结 束</button>
       </template>
-      <p style="font-size:13px;color:var(--sub);margin-top:8px" x-text="activeTimer ? '计时进行中...' : '点击开始记录当前活动'"></p>
+      <p class="text-xs text-slate-400 dark:text-gray-500 mt-3" x-text="activeTimer ? '计时进行中...' : '点击开始记录当前活动'"></p>
     </div>
 
-    <div class="card">
-      <h3 style="margin-bottom:12px">手动补录</h3>
-      <div class="form-group"><label>开始时间</label><input type="datetime-local" x-model="form.start_time"></div>
-      <div class="form-group"><label>结束时间</label><input type="datetime-local" x-model="form.end_time"></div>
-      <div class="form-group"><label>描述</label><input type="text" x-model="form.description" placeholder="做了什么..."></div>
-      <div class="form-group"><label>标签（逗号分隔）</label><input type="text" x-model="form.tags" placeholder="工作,学习,运动"></div>
-      <button class="btn btn-primary" style="width:100%" @click="submitManual()">添加记录</button>
+    <!-- Manual Entry -->
+    <div class="mx-4 mt-3 p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
+      <h3 class="font-semibold text-sm text-slate-500 dark:text-gray-400 mb-3">手动补录</h3>
+      <div class="space-y-3">
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">开始时间</label><input type="datetime-local" x-model="form.start_time" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">结束时间</label><input type="datetime-local" x-model="form.end_time" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">描述</label><input type="text" x-model="form.description" placeholder="做了什么..." class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">标签（逗号分隔）</label><input type="text" x-model="form.tags" placeholder="工作,学习,运动" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+      </div>
+      <button class="w-full mt-4 py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all" @click="submitManual()">添加记录</button>
     </div>
   </div>
 
   <!-- History View -->
-  <div x-show="view === 'history'">
-    <div class="card" style="display:flex;gap:8px;align-items:center">
-      <input type="date" x-model="historyDate" @change="loadHistory()" style="flex:1;padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:16px">
-      <button class="btn btn-ghost" @click="historyDate='';loadHistory()">全部</button>
+  <div x-show="view === 'history'"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 translate-x-4"
+    x-transition:enter-end="opacity-100 translate-x-0"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-x-0"
+    x-transition:leave-end="opacity-0 -translate-x-4">
+    <div class="mx-4 mt-4 p-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm flex gap-2 items-center">
+      <input type="date" x-model="historyDate" @change="loadHistory()" class="flex-1 p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors">
+      <button class="px-4 py-2.5 text-sm font-medium text-slate-500 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light transition-colors" @click="historyDate='';loadHistory()">全部</button>
     </div>
-    <template x-if="Object.keys(historyGroups).length === 0">
-      <div class="empty">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <p>还没有记录</p>
+    <!-- Loading skeleton -->
+    <template x-if="loading.history">
+      <div class="mx-4 mt-3 space-y-3 animate-pulse">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4"><div class="h-3 bg-slate-200 dark:bg-gray-700 rounded w-20 mb-3"></div><div class="h-4 bg-slate-200 dark:bg-gray-700 rounded w-48"></div></div>
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4"><div class="h-3 bg-slate-200 dark:bg-gray-700 rounded w-16 mb-3"></div><div class="h-4 bg-slate-200 dark:bg-gray-700 rounded w-36"></div></div>
+      </div>
+    </template>
+    <template x-if="!loading.history && Object.keys(historyGroups).length === 0">
+      <div class="text-center py-16 text-slate-400 dark:text-gray-500">
+        <svg class="w-20 h-20 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <p class="text-sm">还没有记录</p>
+        <p class="text-xs mt-1">点击底部"记录"开始追踪时间</p>
       </div>
     </template>
     <template x-for="(items, day) in historyGroups">
-      <div class="date-group">
-        <div class="date-header" x-text="day"></div>
-        <template x-for="item in items">
-          <div class="timeline-item">
-            <div class="timeline-time">
-              <div x-text="fmtTime(item.start_time)"></div>
-              <div x-text="item.end_time ? '→ ' + fmtTime(item.end_time) : '进行中'"></div>
-            </div>
-            <div class="timeline-desc">
-              <div x-text="item.description || '(无描述)'"></div>
-              <div class="timeline-tags">
-                <template x-for="t in (item.tags||'').split(',').filter(Boolean)">
-                  <span class="tag" x-text="t.trim()"></span>
-                </template>
+      <div class="mx-4 mt-3">
+        <div class="text-xs font-bold text-slate-400 dark:text-gray-500 px-1 py-2" x-text="day"></div>
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+          <template x-for="(item, idx) in items">
+            <div class="flex items-start gap-3 px-4 py-3" :class="idx < items.length - 1 ? 'border-b border-slate-50 dark:border-gray-700/50' : ''">
+              <div class="text-xs text-slate-400 dark:text-gray-500 whitespace-nowrap min-w-[80px] pt-0.5">
+                <div x-text="fmtTime(item.start_time)"></div>
+                <div x-text="item.end_time ? '→ ' + fmtTime(item.end_time) : '进行中'"></div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm" x-text="item.description || '(无描述)'"></div>
+                <div class="flex gap-1 flex-wrap mt-1.5">
+                  <template x-for="t in (item.tags||'').split(',').filter(Boolean)">
+                    <span class="text-[10px] bg-primary-pale text-primary-dark dark:bg-teal-900/40 dark:text-teal-300 px-2 py-0.5 rounded-full font-medium" x-text="t.trim()"></span>
+                  </template>
+                </div>
+              </div>
+              <div class="flex gap-1 shrink-0">
+                <button class="p-2 text-slate-300 dark:text-gray-600 hover:text-primary dark:hover:text-primary-light transition-colors" @click="editItem(item)" aria-label="编辑">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </button>
+                <button class="p-2 text-slate-300 dark:text-gray-600 hover:text-red-500 transition-colors" @click="deleteItem(item.id)" aria-label="删除">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
               </div>
             </div>
-            <div class="timeline-actions">
-              <button class="btn btn-ghost" style="min-width:36px;min-height:36px;padding:4px" @click="editItem(item)">✏️</button>
-              <button class="btn btn-ghost" style="min-width:36px;min-height:36px;padding:4px" @click="deleteItem(item.id)">🗑️</button>
-            </div>
-          </div>
-        </template>
+          </template>
+        </div>
       </div>
     </template>
   </div>
 
   <!-- Report View -->
-  <div x-show="view === 'report'">
-    <div class="card" style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" @click="generateReport('day')" :disabled="generating">
+  <div x-show="view === 'report'"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 -translate-x-4"
+    x-transition:enter-end="opacity-100 translate-x-0"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-x-0"
+    x-transition:leave-end="opacity-0 translate-x-4">
+    <div class="mx-4 mt-4 flex gap-2">
+      <button class="flex-1 py-3 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all disabled:opacity-50 flex items-center justify-center gap-2" @click="generateReport('day')" :disabled="generating">
         <span class="spinner" x-show="generating"></span>今日总结
       </button>
-      <button class="btn btn-primary" style="flex:1" @click="generateReport('week')" :disabled="generating">
+      <button class="flex-1 py-3 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all disabled:opacity-50 flex items-center justify-center gap-2" @click="generateReport('week')" :disabled="generating">
         <span class="spinner" x-show="generating"></span>本周分析
       </button>
     </div>
 
-    <template x-if="latestReport">
+    <!-- Loading skeleton -->
+    <template x-if="generating">
+      <div class="mx-4 mt-3 space-y-3 animate-pulse">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4"><div class="h-4 bg-slate-200 dark:bg-gray-700 rounded w-24 mb-3"></div><div class="h-3 bg-slate-200 dark:bg-gray-700 rounded w-full mb-2"></div><div class="h-3 bg-slate-200 dark:bg-gray-700 rounded w-3/4"></div></div>
+      </div>
+    </template>
+
+    <template x-if="latestReport && !generating">
     <div>
       <template x-for="section in reportSections">
-        <div class="card report-section">
-          <div class="section-header" x-text="section.title"></div>
-          <div class="report-body" x-html="section.html"></div>
+        <div class="mx-4 mt-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+          <div class="px-4 py-3 font-semibold text-sm text-primary dark:text-primary-light border-b-2 border-primary-pale dark:border-teal-900/30" x-text="section.title"></div>
+          <div class="px-4 py-3 report-body text-sm text-slate-700 dark:text-gray-300" x-html="section.html"></div>
         </div>
       </template>
 
-      <div class="card" x-show="latestReport.user_feedback">
-        <p style="font-size:13px;color:var(--sub)">你的反馈：<strong x-text="feedbackLabel(latestReport.user_feedback)"></strong></p>
+      <div class="mx-4 mt-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4" x-show="latestReport.user_feedback">
+        <p class="text-xs text-slate-400 dark:text-gray-500">你的反馈：<strong class="text-slate-700 dark:text-gray-300" x-text="feedbackLabel(latestReport.user_feedback)"></strong></p>
       </div>
-      <div class="card" x-show="!latestReport.user_feedback">
-        <p style="font-size:13px;color:var(--sub);margin-bottom:8px">这个建议对你有帮助吗？</p>
-        <div class="feedback-bar">
-          <button class="btn btn-sm btn-success" :class="{ active: feedbackSent === 'helpful' }" @click="sendFeedback('helpful')">有帮助</button>
-          <button class="btn btn-sm btn-primary" :class="{ active: feedbackSent === 'executed' }" @click="sendFeedback('executed')">已执行</button>
-          <button class="btn btn-sm btn-ghost" :class="{ active: feedbackSent === 'ignored' }" @click="sendFeedback('ignored')">忽略</button>
+      <div class="mx-4 mt-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4" x-show="!latestReport.user_feedback">
+        <p class="text-xs text-slate-400 dark:text-gray-500 mb-3">这个建议对你有帮助吗？</p>
+        <div class="flex gap-2">
+          <button class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+            :class="feedbackSent === 'helpful' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'"
+            @click="sendFeedback('helpful')">有帮助</button>
+          <button class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+            :class="feedbackSent === 'executed' ? 'bg-primary text-white' : 'bg-primary-pale dark:bg-teal-900/20 text-primary dark:text-primary-light hover:bg-teal-100 dark:hover:bg-teal-900/40'"
+            @click="sendFeedback('executed')">已执行</button>
+          <button class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+            :class="feedbackSent === 'ignored' ? 'bg-slate-400 text-white' : 'bg-slate-100 dark:bg-gray-700 text-slate-500 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-gray-600'"
+            @click="sendFeedback('ignored')">忽略</button>
         </div>
       </div>
     </div>
     </template>
 
     <template x-if="!latestReport && !generating">
-      <div class="empty">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-        <p>点击上方按钮生成 AI 分析报告</p>
+      <div class="text-center py-16 text-slate-400 dark:text-gray-500">
+        <svg class="w-20 h-20 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        <p class="text-sm">点击上方按钮生成 AI 分析报告</p>
       </div>
     </template>
   </div>
 
   <!-- Goals View -->
-  <div x-show="view === 'goals'">
-    <div class="card">
-      <h3 style="margin-bottom:12px">当前目标</h3>
+  <div x-show="view === 'goals'"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 translate-x-4"
+    x-transition:enter-end="opacity-100 translate-x-0"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-x-0"
+    x-transition:leave-end="opacity-0 -translate-x-4">
+    <div class="mx-4 mt-4 p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
+      <h3 class="font-semibold text-sm text-slate-500 dark:text-gray-400 mb-3">当前目标</h3>
       <template x-if="activeGoals.length === 0">
-        <p style="color:var(--sub);font-size:14px">还没有设定目标</p>
+        <p class="text-sm text-slate-400 dark:text-gray-500 py-2">还没有设定目标</p>
       </template>
       <template x-for="g in activeGoals">
-        <div class="goal-item">
-          <span class="goal-content" x-text="g.content"></span>
-          <button class="btn btn-sm btn-ghost" @click="deactivateGoal(g.id)">停用</button>
+        <div class="flex items-center gap-3 py-3 border-b border-slate-50 dark:border-gray-700/50 last:border-0">
+          <span class="flex-1 text-sm" x-text="g.content"></span>
+          <button class="px-3 py-1.5 text-xs font-medium text-slate-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="deactivateGoal(g.id)">停用</button>
         </div>
       </template>
     </div>
 
-    <div class="card">
-      <h3 style="margin-bottom:12px">添加新目标</h3>
-      <div style="display:flex;gap:8px">
-        <input type="text" x-model="newGoal" @keydown.enter="addGoal()" placeholder="例如：每天深度工作3小时" style="flex:1;padding:10px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:16px">
-        <button class="btn btn-primary" @click="addGoal()">添加</button>
+    <div class="mx-4 mt-3 p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
+      <h3 class="font-semibold text-sm text-slate-500 dark:text-gray-400 mb-3">添加新目标</h3>
+      <div class="flex gap-2">
+        <input type="text" x-model="newGoal" @keydown.enter="addGoal()" placeholder="例如：每天深度工作3小时" class="flex-1 p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors">
+        <button class="px-5 py-2.5 rounded-lg font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all" @click="addGoal()">添加</button>
       </div>
     </div>
 
-    <div class="card" x-show="inactiveGoals.length > 0">
-      <h3 style="margin-bottom:12px;color:var(--sub)">已停用的目标</h3>
+    <div class="mx-4 mt-3 p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm" x-show="inactiveGoals.length > 0">
+      <h3 class="font-semibold text-sm text-slate-400 dark:text-gray-500 mb-3">已停用的目标</h3>
       <template x-for="g in inactiveGoals">
-        <div class="goal-item goal-inactive">
-          <span class="goal-content" x-text="g.content"></span>
-          <button class="btn btn-sm btn-primary" @click="activateGoal(g.id)">启用</button>
+        <div class="flex items-center gap-3 py-3 border-b border-slate-50 dark:border-gray-700/50 last:border-0">
+          <span class="flex-1 text-sm text-slate-400 dark:text-gray-500 line-through" x-text="g.content"></span>
+          <button class="px-3 py-1.5 text-xs font-medium text-primary dark:text-primary-light hover:bg-primary-pale dark:hover:bg-teal-900/30 rounded-lg transition-colors" @click="activateGoal(g.id)">启用</button>
         </div>
       </template>
     </div>
   </div>
 
   <!-- Bottom Nav -->
-  <div class="nav">
-    <button class="nav-item" :class="{ active: view === 'record' }" @click="view='record'">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><polyline points="12,7 12,12 15,15" stroke-width="2" stroke-linecap="round"/></svg>
-      记录
+  <div class="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-slate-200 dark:border-gray-700 flex justify-around z-50" style="padding-bottom:var(--safe-bottom)">
+    <button class="flex flex-col items-center gap-1 py-2 px-3 min-w-[44px] min-h-[44px] justify-center bg-transparent border-0 text-slate-400 dark:text-gray-500 transition-colors" :class="{ '!text-primary dark:!text-primary-light': view === 'record' }" @click="goView('record')">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><polyline points="12,7 12,12 15,15" stroke-width="2" stroke-linecap="round"/></svg>
+      <span class="text-[10px]">记录</span>
     </button>
-    <button class="nav-item" :class="{ active: view === 'history' }" @click="view='history';loadHistory()">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="6" stroke-width="2"/><line x1="8" y1="2" x2="8" y2="6" stroke-width="2"/><line x1="3" y1="10" x2="21" y2="10" stroke-width="2"/></svg>
-      历史
+    <button class="flex flex-col items-center gap-1 py-2 px-3 min-w-[44px] min-h-[44px] justify-center bg-transparent border-0 text-slate-400 dark:text-gray-500 transition-colors" :class="{ '!text-primary dark:!text-primary-light': view === 'history' }" @click="goView('history')">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="6" stroke-width="2"/><line x1="8" y1="2" x2="8" y2="6" stroke-width="2"/><line x1="3" y1="10" x2="21" y2="10" stroke-width="2"/></svg>
+      <span class="text-[10px]">历史</span>
     </button>
-    <button class="nav-item" :class="{ active: view === 'report' }" @click="view='report';loadReport()">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-      报告
+    <button class="flex flex-col items-center gap-1 py-2 px-3 min-w-[44px] min-h-[44px] justify-center bg-transparent border-0 text-slate-400 dark:text-gray-500 transition-colors" :class="{ '!text-primary dark:!text-primary-light': view === 'report' }" @click="goView('report')">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <span class="text-[10px]">报告</span>
     </button>
-    <button class="nav-item" :class="{ active: view === 'goals' }" @click="view='goals';loadGoals()">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke-width="2"/><line x1="12" y1="1" x2="12" y2="3" stroke-width="2"/><line x1="12" y1="21" x2="12" y2="23" stroke-width="2"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke-width="2"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke-width="2"/><line x1="1" y1="12" x2="3" y2="12" stroke-width="2"/><line x1="21" y1="12" x2="23" y2="12" stroke-width="2"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke-width="2"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke-width="2"/></svg>
-      目标
+    <button class="flex flex-col items-center gap-1 py-2 px-3 min-w-[44px] min-h-[44px] justify-center bg-transparent border-0 text-slate-400 dark:text-gray-500 transition-colors" :class="{ '!text-primary dark:!text-primary-light': view === 'goals' }" @click="goView('goals')">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke-width="2"/></svg>
+      <span class="text-[10px]">目标</span>
     </button>
   </div>
 
+  <!-- Dark mode toggle -->
+  <button class="fixed top-3 right-3 z-50 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm text-slate-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary-light transition-colors" @click="toggleDark()" aria-label="切换暗色模式">
+    <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" stroke-width="2"/><line x1="12" y1="1" x2="12" y2="3" stroke-width="2"/><line x1="12" y1="21" x2="12" y2="23" stroke-width="2"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke-width="2"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke-width="2"/><line x1="1" y1="12" x2="3" y2="12" stroke-width="2"/><line x1="21" y1="12" x2="23" y2="12" stroke-width="2"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke-width="2"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke-width="2"/></svg>
+    <svg x-show="darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+  </button>
+
   <!-- Edit Modal -->
-  <div class="modal-overlay" x-show="editModal.show" @click.self="editModal.show=false">
-    <div class="modal">
-      <h3>编辑记录</h3>
-      <div class="form-group"><label>开始</label><input type="datetime-local" x-model="editModal.start"></div>
-      <div class="form-group"><label>结束</label><input type="datetime-local" x-model="editModal.end"></div>
-      <div class="form-group"><label>描述</label><input type="text" x-model="editModal.desc"></div>
-      <div class="form-group"><label>标签</label><input type="text" x-model="editModal.tags"></div>
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button class="btn btn-ghost" style="flex:1" @click="editModal.show=false">取消</button>
-        <button class="btn btn-primary" style="flex:1" @click="saveEdit()">保存</button>
+  <div class="fixed inset-0 z-[200] flex items-end justify-center" x-show="editModal.show" @click.self="editModal.show=false"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-t-2xl p-6 max-h-[85vh] overflow-y-auto shadow-xl"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full">
+      <div class="w-10 h-1 bg-slate-300 dark:bg-gray-600 rounded-full mx-auto mb-4"></div>
+      <h3 class="font-bold text-lg mb-4">编辑记录</h3>
+      <div class="space-y-3">
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">开始</label><input type="datetime-local" x-model="editModal.start" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">结束</label><input type="datetime-local" x-model="editModal.end" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">描述</label><input type="text" x-model="editModal.desc" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">标签</label><input type="text" x-model="editModal.tags" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+      </div>
+      <div class="flex gap-3 mt-4">
+        <button class="flex-1 py-2.5 rounded-xl font-semibold text-slate-500 dark:text-gray-400 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 transition-colors" @click="editModal.show=false">取消</button>
+        <button class="flex-1 py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all" @click="saveEdit()">保存</button>
       </div>
     </div>
   </div>
 
   <!-- Stop Timer Modal -->
-  <div class="modal-overlay" x-show="stopModal.show" @click.self="stopModal.show=false">
-    <div class="modal">
-      <h3>你在做什么？</h3>
-      <div class="form-group"><label>描述</label><input type="text" x-model="stopModal.desc" @keydown.enter="confirmStop()" placeholder="输入活动描述..."></div>
-      <div class="form-group"><label>标签（逗号分隔）</label><input type="text" x-model="stopModal.tags"></div>
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button class="btn btn-ghost" style="flex:1" @click="stopModal.show=false">取消</button>
-        <button class="btn btn-primary" style="flex:1" @click="confirmStop()">确认结束</button>
+  <div class="fixed inset-0 z-[200] flex items-end justify-center" x-show="stopModal.show" @click.self="stopModal.show=false"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-t-2xl p-6 max-h-[85vh] overflow-y-auto shadow-xl"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full">
+      <div class="w-10 h-1 bg-slate-300 dark:bg-gray-600 rounded-full mx-auto mb-4"></div>
+      <h3 class="font-bold text-lg mb-4">你在做什么？</h3>
+      <div class="space-y-3">
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">描述</label><input type="text" x-model="stopModal.desc" @keydown.enter="confirmStop()" placeholder="输入活动描述..." class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+        <div><label class="block text-xs text-slate-400 dark:text-gray-500 mb-1">标签（逗号分隔）</label><input type="text" x-model="stopModal.tags" class="w-full p-2.5 border-2 border-slate-200 dark:border-gray-600 rounded-lg bg-slate-50 dark:bg-gray-700 dark:text-white focus:border-primary focus:outline-none transition-colors"></div>
+      </div>
+      <div class="flex gap-3 mt-4">
+        <button class="flex-1 py-2.5 rounded-xl font-semibold text-slate-500 dark:text-gray-400 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 transition-colors" @click="stopModal.show=false">取消</button>
+        <button class="flex-1 py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-primary-dark active:opacity-70 transition-all" @click="confirmStop()">确认结束</button>
       </div>
     </div>
   </div>
@@ -354,7 +390,9 @@ function app() {
     authed: false,
     pwdInput: "",
     authError: "",
-    toast: { show: false, msg: "", timer: null },
+    darkMode: false,
+    toasts: [],
+    loading: { history: false, goals: false },
     // timer
     activeTimer: null,
     timerDisplay: "00:00:00",
@@ -379,6 +417,33 @@ function app() {
     get activeGoals() { return this.goals.filter(g => g.is_active); },
     get inactiveGoals() { return this.goals.filter(g => !g.is_active); },
 
+    goView(v) {
+      if (this.view === v) return;
+      this.view = v;
+      if (v === 'history') this.loadHistory();
+      else if (v === 'report') this.loadReport();
+      else if (v === 'goals') this.loadGoals();
+    },
+
+    // ── dark mode ──
+    initDarkMode() {
+      const stored = localStorage.getItem("lifetrack_dark");
+      if (stored !== null) {
+        this.darkMode = stored === "true";
+      } else {
+        this.darkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      }
+      this.applyDarkMode();
+    },
+    toggleDark() {
+      this.darkMode = !this.darkMode;
+      localStorage.setItem("lifetrack_dark", this.darkMode);
+      this.applyDarkMode();
+    },
+    applyDarkMode() {
+      document.documentElement.classList.toggle("dark", this.darkMode);
+    },
+
     async init() {
       const saved = localStorage.getItem("lifetrack_pwd");
       if (saved) { this.pwdInput = saved; await this.doAuth(); }
@@ -391,10 +456,15 @@ function app() {
       return fetch(path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
     },
 
-    showToast(msg) {
-      clearTimeout(this.toast.timer);
-      this.toast.msg = msg; this.toast.show = true;
-      this.toast.timer = setTimeout(() => { this.toast.show = false; }, 2000);
+    showToast(msg, type = 'info') {
+      const id = Date.now();
+      const toast = { id, msg, type, show: true };
+      this.toasts.push(toast);
+      setTimeout(() => {
+        const t = this.toasts.find(t => t.id === id);
+        if (t) t.show = false;
+        setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 300);
+      }, 2500);
     },
 
     async doAuth() {
@@ -418,16 +488,21 @@ function app() {
         const res = await this.api("/api/activities/active");
         const data = await res.json();
         if (data.active) { this.activeTimer = data.active; this.startTicking(data.active.start_time); }
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error("checkActiveTimer:", e); }
     },
 
     startTicking(startIso) {
-      const start = new Date(startIso + (startIso.endsWith("Z") ? "" : ""));
-      this.timerInterval = setInterval(() => {
+      const normalized = (startIso.endsWith("Z") || startIso.includes("+")) ? startIso : startIso + "Z";
+      const start = new Date(normalized);
+      if (isNaN(start.getTime())) { console.error("Invalid date:", startIso); return; }
+      if (this.timerInterval) clearInterval(this.timerInterval);
+      const tick = () => {
         const diff = Math.max(0, Date.now() - start.getTime());
         const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000), s = Math.floor((diff % 60000) / 1000);
         this.timerDisplay = [h, m, s].map(v => String(v).padStart(2, "0")).join(":");
-      }, 200);
+      };
+      tick(); // 立即刷新一次
+      this.timerInterval = setInterval(tick, 200);
     },
 
     async startTimer() {
@@ -437,7 +512,7 @@ function app() {
         });
         const data = await res.json();
         this.activeTimer = data; this.startTicking(data.start_time); this.showToast("计时开始");
-      } catch (e) { this.showToast("开始失败"); }
+      } catch (e) { this.showToast("开始失败", "error"); }
     },
 
     stopTimer() {
@@ -453,7 +528,7 @@ function app() {
         clearInterval(this.timerInterval);
         this.activeTimer = null; this.timerDisplay = "00:00:00"; this.stopModal.show = false;
         this.showToast("记录已保存");
-      } catch (e) { this.showToast("保存失败"); }
+      } catch (e) { this.showToast("保存失败", "error"); }
     },
 
     // ── manual entry ──
@@ -473,6 +548,7 @@ function app() {
 
     // ── history ──
     async loadHistory() {
+      this.loading.history = true;
       let url = "/api/activities?limit=200";
       if (this.historyDate) url += "&date_param=" + this.historyDate;
       try {
@@ -484,7 +560,8 @@ function app() {
           if (!this.historyGroups[day]) this.historyGroups[day] = [];
           this.historyGroups[day].push(item);
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error("loadHistory:", e); this.showToast("加载历史失败", "error"); }
+      finally { this.loading.history = false; }
     },
 
     fmtTime(iso) { return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }); },
@@ -513,13 +590,13 @@ function app() {
     async deleteItem(id) {
       if (!confirm("确定删除这条记录？")) return;
       try { await this.api("/api/activities/" + id, { method: "DELETE" }); await this.loadHistory(); this.showToast("已删除"); }
-      catch (e) { console.error(e); }
+      catch (e) { console.error("deleteItem:", e); this.showToast("删除失败", "error"); }
     },
 
     // ── goals ──
     async loadGoals() {
       try { const res = await this.api("/api/goals"); this.goals = await res.json(); }
-      catch (e) { console.error(e); }
+      catch (e) { console.error("loadGoals:", e); this.showToast("加载目标失败", "error"); }
     },
 
     async addGoal() {
@@ -544,15 +621,15 @@ function app() {
     parseSections(md) {
       if (!md) return [];
       const sections = [];
-      const parts = md.split(/(?=^# )/m);
+      const parts = md.split(/(?=^#{1,3}\s)/m);
       for (const part of parts) {
         const lines = part.trim().split("\n");
-        const title = lines[0].replace(/^# /, "").trim();
+        const title = lines[0].replace(/^#{1,3}\s/, "").trim();
         const body = lines.slice(1).join("\n").trim();
-        if (title && body) {
+        if (title) {
           sections.push({
             title: title,
-            html: typeof marked !== "undefined" ? marked.parse(body) : body,
+            html: typeof marked !== "undefined" ? marked.parse(body || "") : (body || ""),
           });
         }
       }
@@ -571,7 +648,7 @@ function app() {
         this.latestReport = data.report || null;
         this.reportSections = this.latestReport ? this.parseSections(this.latestReport.summary_text) : [];
         this.feedbackSent = this.latestReport ? this.latestReport.user_feedback : null;
-      } catch (e) { /* ignored */ }
+      } catch (e) { console.error("loadReport:", e); }
     },
 
     async generateReport(period) {
@@ -588,7 +665,7 @@ function app() {
         this.reportSections = this.parseSections(this.latestReport.summary_text);
         this.feedbackSent = null;
         this.showToast("报告已生成");
-      } catch (e) { this.showToast(e.message || "生成失败，请检查 API Key 配置"); }
+      } catch (e) { this.showToast(e.message || "生成失败，请检查 API Key 配置", "error"); }
       finally { this.generating = false; }
     },
 
